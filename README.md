@@ -28,7 +28,9 @@ Every puzzle is always exactly solvable.
 # Usage
 
 ```
-$ make run
+$ make
+$ ./main
+$ ./main -t [timeout in seconds (default: 45). Zero means no timeout.]
 ```
 
 # License

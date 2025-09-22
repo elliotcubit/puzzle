@@ -367,6 +367,20 @@ int main(int argc, char ** argv) {
 	}
 	srand(seed);
 
+	int timeout = 45;
+	int opt;
+	char * endof = NULL;
+	while ((opt = getopt(argc, argv, "t:")) != -1) {
+		switch (opt) {
+			case 't':
+				timeout = (int) strtol(optarg, &endof, 10);
+				if (*endof) {
+					fprintf(stderr, "Timeout must be a number.\n");
+					return 1;
+				}
+		}
+	}
+
 	int numc = 0;
 	int * nums = malloc(20 * sizeof(int));
 	if (nums == NULL) {
@@ -443,9 +457,13 @@ int main(int argc, char ** argv) {
 
 	printf("Get as close as possible to %d using the numbers ", n);
 	printList(numc, nums);
-	printf(" (Using only + - * / and parentheses). You have 45 seconds.\n");
+	printf(" (Using only + - * / and parentheses).");
+	if (timeout > 0) {
+		printf(" You have %d seconds.", timeout);
+	}
+	printf("\n");
 
-	alarm(45);
+	alarm(timeout);
 	gettimeofday(&timecheck, NULL);
 	long startTime = (long)timecheck.tv_sec * 1000 + (long)timecheck.tv_usec / 1000;
 	while (result != (double) n) {
