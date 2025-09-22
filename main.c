@@ -205,17 +205,23 @@ double eval(CharStack * charStack, DoubleStack * doubleStack) {
 	return 1;
 }
 
-int evalInfix(double * result, char * expr) {
-	// TODO: ensure that the numbers in the expression are valid
+int evalInfix(double * result, char * expr, int numc, int * nums) {
 	DoubleStack * doubleStack = newIntStack(10);
 	CharStack * charStack = newCharStack(10);
 
-	double n;
+	int n;
 	double left;
 	double right;
 	char c;
 
-	int i = 0;
+	char * present = malloc(numc*sizeof(char));
+	if (!present) {
+		doubleStackFree(doubleStack);
+		charStackFree(charStack);
+		return 2;
+	}
+	for (int i=0; i<numc; i++)
+		present[i] = 0;
 
 	while (*expr != 0xA) {
 		switch (*expr) {
@@ -274,8 +280,17 @@ int evalInfix(double * result, char * expr) {
 			case '7':
 			case '8':
 			case '9':
-				n = (double) strtol(expr, &expr, 10);
-				if (doubleStackPush(doubleStack, n)) goto fail;
+				n = (int) strtol(expr, &expr, 10);
+				char found = 0;
+				for (int i=0; i<numc; i++) {
+					if (nums[i] == n && !present[i]) {
+						present[i] = 1;
+						found = 1;
+						break;
+					}
+				}
+				if (!found) goto invalid;
+				if (doubleStackPush(doubleStack, (double) n)) goto fail;
 				break;
 			default:
 				expr++;
@@ -290,30 +305,41 @@ int evalInfix(double * result, char * expr) {
 	if (doubleStack->size != 1) goto invalid;
 
 	*result = doubleStackPop(doubleStack);
+	free(present);
 	doubleStackFree(doubleStack);
 	charStackFree(charStack);
 	return 0;
 
 	fail:
+		free(present);
 		doubleStackFree(doubleStack);
 		charStackFree(charStack);
 		return 2;
 	invalid:
+		free(present);
 		doubleStackFree(doubleStack);
 		charStackFree(charStack);
 		return 1;
 }
 
+double distance(double x, double y) {
+	if (x > y) {
+		return x - y;
+	} else {
+		return y - x;
+	}
+}
+
 int main(int argc, char ** argv) {
 	FILE * f = fopen("/dev/urandom", "r");
 	if (f == NULL) {
-		perror("failed to open /dev/urandom\n");
+		perror("failed to open /dev/urandom");
 		return 1;
 	}
 
 	int seed = 0;
 	if (!fread((void *) &seed, sizeof(int), 1, f)) {
-		perror("failed to read /dev/urandom\n");
+		perror("failed to read /dev/urandom");
 		return 1;
 	}
 	srand(seed);
@@ -321,7 +347,7 @@ int main(int argc, char ** argv) {
 	int numc = 0;
 	int * nums = malloc(20 * sizeof(int));
 	if (nums == NULL) {
-		perror("failed to allocate memory\n");
+		perror("failed to allocate memory");
 		return 1;
 	}
 
@@ -359,7 +385,7 @@ int main(int argc, char ** argv) {
 			int numFactors;
 			int * factors = factor(working[0], &numFactors);
 			if (factors == NULL) {
-				perror("malloc failed\n");
+				perror("malloc failed");
 				return 1;
 			}
 			if (numFactors == 1) {
@@ -382,25 +408,27 @@ int main(int argc, char ** argv) {
 
 	char * line = NULL;
 	size_t size = 0;
+	double result = 0;
+
+	while (result != (double) n) {
 	printf(">>> ");
 	getline(&line, &size, stdin);
-
-
-	double result;
-	switch (evalInfix(&result, line)) {
-		case 1:
-			perror("query is invalid\n");
-			return 1;
-			break;
-		case 2:
-			perror("evalInfix failed\n");
-			return 1;
-			break;
-		default:
-			break;
+		switch (evalInfix(&result, line, numc, nums)) {
+			case 1:
+				fprintf(stderr, "query is invalid\n");
+				return 1;
+			case 2:
+				perror("evalInfix failed");
+				return 1;
+			default:
+				break;
+		}
+		printf(" = %g (distance: %g)\n", result, distance((double) n, result));
 	}
-	
-	printf(" = %f\n", result);
+
+	free(nums);
 
 	// TODO: Add timeout
+	
+	return 0;
 }
