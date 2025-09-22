@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include <sys/select.h>
+#include <signal.h>
+#include <unistd.h>
+#include <math.h>
+#include <sys/time.h>
 
 int specials[] = {25, 50, 75, 100};
 
@@ -310,16 +312,22 @@ int evalInfix(double * result, char * expr, int numc, int * nums) {
 	charStackFree(charStack);
 	return 0;
 
-	fail:
-		free(present);
-		doubleStackFree(doubleStack);
-		charStackFree(charStack);
-		return 2;
-	invalid:
-		free(present);
-		doubleStackFree(doubleStack);
-		charStackFree(charStack);
-		return 1;
+fail:
+	free(present);
+	doubleStackFree(doubleStack);
+	charStackFree(charStack);
+	return 2;
+invalid:
+	free(present);
+	doubleStackFree(doubleStack);
+	charStackFree(charStack);
+	return 1;
+}
+
+volatile sig_atomic_t timed_out = 0;
+
+void alarm_handler(int sig) {
+	timed_out = 1;
 }
 
 double distance(double x, double y) {
@@ -402,33 +410,83 @@ int main(int argc, char ** argv) {
 	}
 	free(working);
 
-	printf("Get as close as possible to %d using the numbers ", n);
-	printList(numc, nums);
-	printf(" (Using only + - * / and parentheses).\n");
-
 	char * line = NULL;
 	size_t size = 0;
 	double result = 0;
+	double best = INFINITY;
+	double dist = 0;
+	struct timeval timecheck;
+	long bestTime = 0;
 
+	struct sigaction sa;
+	sa.sa_handler = alarm_handler;
+	sigemptyset(&sa.sa_mask);
+	if (sigaction(SIGALRM, &sa, NULL)) {
+		perror("failed to set timer");
+		return 1;
+	}
+
+	printf("Get as close as possible to %d using the numbers ", n);
+	printList(numc, nums);
+	printf(" (Using only + - * / and parentheses). You have 45 seconds.\n");
+
+	alarm(45);
+	gettimeofday(&timecheck, NULL);
+	long startTime = (long)timecheck.tv_sec * 1000 + (long)timecheck.tv_usec / 1000;
 	while (result != (double) n) {
-	printf(">>> ");
-	getline(&line, &size, stdin);
+		printf(">>> ");
+		if (getline(&line, &size, stdin) == -1 && !timed_out) {
+			perror("failed to read stdin\n");
+			return 1;
+		}
+		gettimeofday(&timecheck, NULL);
+		long thisTime = (long)timecheck.tv_sec * 1000 + (long)timecheck.tv_usec / 1000;
+		if (timed_out) break;
 		switch (evalInfix(&result, line, numc, nums)) {
 			case 1:
-				fprintf(stderr, "query is invalid\n");
-				return 1;
+				fprintf(stderr, "That query is invalid.\n");
+				continue;
 			case 2:
-				perror("evalInfix failed");
+				perror("failed to evaluate input");
 				return 1;
 			default:
 				break;
 		}
-		printf(" = %g (distance: %g)\n", result, distance((double) n, result));
+		dist = distance((double) n, result);
+		if (dist < best) {
+			bestTime = thisTime;
+			best = dist;
+		}
+		if (dist == 0) {
+			printf(" = %d! Great work - it took %.2f seconds!\n", n, ((double) thisTime - (double) startTime)/1000);
+			break;
+		} else {
+			printf(" = %g (distance: %g) in %.2f seconds\n", result, dist, ((double) thisTime - (double) startTime)/1000);
+		}
+	}
+	alarm(0);
+	if (timed_out) {
+		printf("\nTimes up!\n");
+		if (best != INFINITY) {
+			printf("Best distance: %g (in %.2f seconds). ", best, ((double) bestTime - (double) startTime)/1000);
+			if (best < 3) {
+				printf("So close!\n");
+			} else if (best < 10) {
+				printf("Good!\n");
+			} else if (best < 20) {
+				printf("Not bad.\n");
+			} else if (best < 50) {
+				printf("Not great.\n");
+			} else if (best < 100) {
+				printf("Not good.\n");
+			} else {
+				printf("Were you even trying?\n");
+			}
+		} else {
+			printf("You didn't give a guess.\n");
+		}
 	}
 
 	free(nums);
-
-	// TODO: Add timeout
-	
 	return 0;
 }
